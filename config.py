@@ -15,7 +15,7 @@ class Config:
     # since the app does not need a signaling feature, disable sqlalchemy-track modifications
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # jwt for authentication and secret key for signing in the tokens, using environment variables for security
+    # jwt for authentication and secret key for signing iN, using environment variables for security
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-key-change-in-production')
     
     # setting the expiration time for the token at 2 hours,to be adjusted based on the security requirements of the application
