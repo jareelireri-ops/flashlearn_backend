@@ -2,13 +2,13 @@ from app import db
 from datetime import datetime, timezone
 from sqlalchemy.orm import validates
 
-# the table for the many-to-many relationship between users and decks
+#the table for the many-to-many relationship between users and decks
 user_collection = db.Table('user_collection',
     db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
     db.Column('deck_id', db.Integer, db.ForeignKey('decks.id', ondelete='CASCADE'), primary_key=True)
 )
 
-# 1. USERS
+  #1.USERS
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -39,7 +39,7 @@ class User(db.Model):
         db.CheckConstraint("role IN ('learner', 'admin')", name='ck_users_role'),
     )
 
-# 2. DECKS
+   #2.DECKS
 class Deck(db.Model):
     __tablename__ = 'decks'
     id = db.Column(db.Integer, primary_key=True)
@@ -65,7 +65,7 @@ class Deck(db.Model):
         db.CheckConstraint("difficulty_level IS NULL OR difficulty_level IN ('easy', 'medium', 'hard')", name='ck_decks_difficulty'),
     )
 
-# 3. FLASHCARDS
+#3.FLASHCARDS
 class Flashcard(db.Model):
     __tablename__ = 'flashcards'
     id = db.Column(db.Integer, primary_key=True)
@@ -87,7 +87,7 @@ class Flashcard(db.Model):
         db.CheckConstraint("difficulty_level IN ('easy', 'medium', 'hard')", name='ck_flashcards_difficulty'),
     )
 
-# 5. STUDY SESSIONS
+#5.STUDY SESSIONS
 class StudySession(db.Model):
     __tablename__ = 'study_sessions'
     id = db.Column(db.Integer, primary_key=True)
@@ -108,7 +108,7 @@ class StudySession(db.Model):
         db.CheckConstraint("status IN ('in-progress', 'paused', 'completed')", name='ck_study_sessions_status'),
     )
 
-# 6. REVIEW HISTORY
+       #6.REVIEW HISTORY
 class ReviewHistory(db.Model):
     __tablename__ = 'review_history'
     id = db.Column(db.Integer, primary_key=True)
@@ -127,7 +127,7 @@ class ReviewHistory(db.Model):
         db.CheckConstraint("rating IN ('easy', 'medium', 'hard')", name='ck_review_history_rating'),
     )
 
-# 7. NOTIFICATIONS
+      #7.NOTIFICATIONS
 class Notification(db.Model):
     __tablename__ = 'notifications'
     id = db.Column(db.Integer, primary_key=True)
@@ -145,7 +145,7 @@ class Notification(db.Model):
     related_deck = db.relationship('Deck', foreign_keys=[related_deck_id], backref=db.backref('notifications', passive_deletes=True))
     related_flashcard = db.relationship('Flashcard', foreign_keys=[related_flashcard_id], backref=db.backref('notifications', passive_deletes=True))
 
-# 8. REPORTS
+    #8.REPORTS
 class Report(db.Model):
     __tablename__ = 'reports'
     id = db.Column(db.Integer, primary_key=True)
