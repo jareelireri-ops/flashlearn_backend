@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from sqlalchemy import func 
 from app import db
 from app.models import User, Deck, Flashcard
 
@@ -343,10 +344,57 @@ def get_library():
         "num_learners": deck.learners.count() # Returns count of users studying the deck
     } for deck in public_decks]), 200
 
+# public routes for landing page
 
-# ==========================================
-# 4. PERSONAL LEARNING COLLECTION ROUTES (PRD 4.7)
-# ==========================================
+
+@decks_bp.route('/public/categories', methods=['GET'])
+def get_public_categories():
+    """Return all distinct categories that have at least one public deck — for the landing page."""
+    results = db.session.query(
+        Deck.category,
+        func.count(Deck.id).label('deck_count')
+    ).filter(
+        Deck.is_public == True,
+        Deck.is_archived == False,
+        Deck.category != None,
+        Deck.category != ''
+    ).group_by(Deck.category).order_by(Deck.category).all()
+    return jsonify([{
+        "category": row.category,
+        "deck_count": row.deck_count
+    } for row in results]), 200
+
+@decks_bp.route('/public/decks', methods=['GET'])
+def get_public_decks():
+    """Browse public decks without authentication — for guests on the landing page.
+    Supports ?category= and ?search= filters. Returns deck info but NOT flashcard content."""
+    query = Deck.query.filter_by(is_public=True, is_archived=False)
+    
+    category = request.args.get('category')
+    if category:
+        query = query.filter_by(category=category)
+        
+    keyword = request.args.get('search')
+    if keyword:
+        query = query.filter(
+            (Deck.title.ilike(f'%{keyword}%')) |
+            (Deck.description.ilike(f'%{keyword}%'))
+        )
+        
+    decks = query.all()
+    
+    return jsonify([{
+        "id": deck.id,
+        "title": deck.title,
+        "description": deck.description,
+        "category": deck.category,
+        "difficulty_level": deck.difficulty_level,
+        "creator": deck.creator.name if deck.creator else "Unknown",
+        "num_flashcards": len(deck.flashcards),
+        "num_learners": deck.learners.count()
+    } for deck in decks]), 200
+
+# 4. PERSONAL LEARNING COLLECTION ROUTES
 
 @decks_bp.route('/collection', methods=['GET'])
 @jwt_required()

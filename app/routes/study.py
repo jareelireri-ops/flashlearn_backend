@@ -432,14 +432,15 @@ def get_review_queue():
 
 
 # USER LEARNING ANALYTICS TO PROVIDE INSIGHTS ON THEIR STUDY HABITS
+
 # All analytics endpoints query the ReviewHistory and StudySession tables
 # for the current user and return data formatted for frontend charts and dashboards. 
 # This includes total sessions, streaks, cards due, and performance.
 
 
-@study_bp.route('/study/analytics/summary', methods=['GET'])
+@study_bp.route('/study/dashboard', methods=['GET'])
 @jwt_required()
-def analytics_summary():
+def dashboard():
     """Get an overview of the user's study activity: total sessions, reviews, streak, cards due."""
     current_user_id = int(get_jwt_identity())
     now = datetime.now(timezone.utc)
