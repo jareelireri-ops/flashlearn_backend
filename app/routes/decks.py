@@ -48,6 +48,8 @@ def create_deck():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to create deck", "details": str(e)}), 500
+    
+    
 
 
 @decks_bp.route('/decks', methods=['GET'])
@@ -393,6 +395,26 @@ def get_public_decks():
         "num_flashcards": len(deck.flashcards),
         "num_learners": deck.learners.count()
     } for deck in decks]), 200
+  
+  # route for UI deckdrawer before a studysession is intialized  
+@decks_bp.route('/decks/<int:deck_id>/preview', methods=['GET'])
+def get_deck_preview(deck_id):
+    """Public teaser: returns only the first card's question for a public deck.
+    No auth required. Never exposes the answer or other cards."""
+    deck = db.session.get(Deck, deck_id)
+
+    if not deck:
+        return jsonify({"error": "Deck not found"}), 404
+
+    if not deck.is_public or deck.is_archived:
+        return jsonify({"error": "This deck is not available"}), 403
+
+    first_card = Flashcard.query.filter_by(deck_id=deck_id).order_by(Flashcard.id.asc()).first()
+
+    return jsonify({
+        "deck_id": deck.id,
+        "first_question": first_card.question if first_card else None
+    }), 200
 
 # 4. PERSONAL LEARNING COLLECTION ROUTES
 

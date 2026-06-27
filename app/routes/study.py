@@ -488,12 +488,13 @@ def dashboard():
 @study_bp.route('/study/analytics/daily', methods=['GET'])
 @jwt_required()
 def analytics_daily():
-    """Get the number of cards reviewed per day for charting. Defaults to last 30 days."""
+    """Get the number of cards reviewed per day for charting. Defaults to last 30 days.
+    Zero-fills days with no activity so the response always has exactly `days` entries."""
     current_user_id = int(get_jwt_identity())
     days = request.args.get('days', 30, type=int)
-    start_date = datetime.now(timezone.utc) - timedelta(days=days)
+    today = datetime.now(timezone.utc).date()
+    start_date = today - timedelta(days=days - 1)
 
-    # Group reviews by date and count them
     daily_data = db.session.query(
         func.date(ReviewHistory.reviewed_at).label('review_date'),
         func.count(ReviewHistory.id).label('cards_reviewed')
@@ -502,14 +503,20 @@ def analytics_daily():
         ReviewHistory.reviewed_at >= start_date
     ).group_by(
         func.date(ReviewHistory.reviewed_at)
-    ).order_by(
-        func.date(ReviewHistory.reviewed_at)
     ).all()
 
-    return jsonify([{
-        "date": str(row.review_date),
-        "cards_reviewed": row.cards_reviewed
-    } for row in daily_data]), 200
+    counts_by_date = {str(row.review_date): row.cards_reviewed for row in daily_data}
+
+    result = []
+    for i in range(days):
+        day = start_date + timedelta(days=i)
+        day_str = str(day)
+        result.append({
+            "date": day_str,
+            "cards_reviewed": counts_by_date.get(day_str, 0)
+        })
+
+    return jsonify(result), 200
 
 
 @study_bp.route('/study/analytics/weekly', methods=['GET'])

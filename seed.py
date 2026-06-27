@@ -21,7 +21,7 @@ def seed_database():
         )
         
         creator = User(
-            email="rabbiflashlearn.com",
+            email="rabbiflashlearn@gmail.com",
             password_hash=generate_password_hash("password123"),
             role="learner",
             name="Jareel Ireri",

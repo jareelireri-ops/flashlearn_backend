@@ -85,7 +85,7 @@ def login():
 @jwt_required()
 def profile():
     # get the current user's ID from the JWT token and fetch their profile from the database.
-    current_user_id = get_jwt_identity()
+    current_user_id = int(get_jwt_identity())
     user = db.session.get(User, current_user_id)
     
     if not user:
