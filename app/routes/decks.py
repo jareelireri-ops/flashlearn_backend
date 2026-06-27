@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func 
+from datetime import datetime, timezone
 from app import db
 from app.models import User, Deck, Flashcard
 
@@ -203,6 +204,10 @@ def add_flashcard(deck_id):
         difficulty_level=data.get('difficulty_level', 'medium'), # setting the default at medium if not specified
         image_url=data.get('image_url')
     )
+
+    # touch the parent deck's updated_at so "new cards added" is detectable on the frontend,
+    # since onupdate only fires on writes to the Deck row itself, not on child flashcard inserts.
+    deck.updated_at = datetime.now(timezone.utc)
     
     try:
         db.session.add(new_card)
@@ -397,7 +402,9 @@ def get_public_decks():
         "difficulty_level": deck.difficulty_level,
         "creator": deck.creator.name if deck.creator else "Unknown",
         "num_flashcards": len(deck.flashcards),
-        "num_learners": deck.learners.count()
+        "num_learners": deck.learners.count(),
+        "created_at": deck.created_at.isoformat(),
+        "updated_at": deck.updated_at.isoformat()
     } for deck in decks]), 200
   
   # route for UI deckdrawer before a studysession is intialized  
@@ -420,7 +427,7 @@ def get_deck_preview(deck_id):
         "first_question": first_card.question if first_card else None
     }), 200
 
-# 4. PERSONAL LEARNING COLLECTION ROUTES
+# PERSONAL LEARNING COLLECTION ROUTES
 
 @decks_bp.route('/collection', methods=['GET'])
 @jwt_required()
@@ -446,7 +453,9 @@ def get_collection():
             "category": deck.category,
             "difficulty_level": deck.difficulty_level,
             "is_owner": True,
-            "num_flashcards": len(deck.flashcards)
+            "num_flashcards": len(deck.flashcards),
+            "created_at": deck.created_at.isoformat(),
+            "updated_at": deck.updated_at.isoformat()
         })
         
     # Add saved decks
@@ -458,7 +467,9 @@ def get_collection():
             "category": deck.category,
             "difficulty_level": deck.difficulty_level,
             "is_owner": False,
-            "num_flashcards": len(deck.flashcards)
+            "num_flashcards": len(deck.flashcards),
+            "created_at": deck.created_at.isoformat(),
+            "updated_at": deck.updated_at.isoformat()
         })
         
     return jsonify(collection), 200
