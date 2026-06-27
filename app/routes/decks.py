@@ -330,7 +330,7 @@ def get_library():
     # 3. Difficulty filter
     difficulty = request.args.get('difficulty')
     if difficulty:
-        query = query.filter_by(difficulty_level=difficulty)
+         query = query.filter(Deck.difficulty_level == difficulty)
         
     public_decks = query.all()
     
@@ -351,7 +351,7 @@ def get_library():
 
 @decks_bp.route('/public/categories', methods=['GET'])
 def get_public_categories():
-    """Return all distinct categories that have at least one public deck — for the landing page."""
+    """Return all distinct categories that have at least one public deck ."""
     results = db.session.query(
         Deck.category,
         func.count(Deck.id).label('deck_count')
@@ -383,6 +383,10 @@ def get_public_decks():
             (Deck.description.ilike(f'%{keyword}%'))
         )
         
+    difficulty = request.args.get('difficulty')
+    if difficulty:
+        query = query.filter(Deck.difficulty_level == difficulty)
+ 
     decks = query.all()
     
     return jsonify([{
@@ -440,6 +444,7 @@ def get_collection():
             "title": deck.title,
             "description": deck.description,
             "category": deck.category,
+            "difficulty_level": deck.difficulty_level,
             "is_owner": True,
             "num_flashcards": len(deck.flashcards)
         })
@@ -451,6 +456,7 @@ def get_collection():
             "title": deck.title,
             "description": deck.description,
             "category": deck.category,
+            "difficulty_level": deck.difficulty_level,
             "is_owner": False,
             "num_flashcards": len(deck.flashcards)
         })

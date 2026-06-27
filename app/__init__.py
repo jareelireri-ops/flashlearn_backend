@@ -12,6 +12,7 @@ jwt = JWTManager()
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+    app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on request body, needed for base64 flashcard images
 
     db.init_app(app)
     migrate.init_app(app, db)

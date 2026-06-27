@@ -75,7 +75,7 @@ class Flashcard(db.Model):
     question = db.Column(db.Text, nullable=False)
     answer = db.Column(db.Text, nullable=False)
     difficulty_level = db.Column(db.String(20), default='medium')
-    image_url = db.Column(db.String(255), nullable=True)
+    image_url = db.Column(db.Text, nullable=True)
     
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
