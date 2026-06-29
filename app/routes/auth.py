@@ -32,7 +32,7 @@ def register():
         name=data['name'],
         email=email_input,
         password_hash=hashed_password,
-        role=data.get('role', 'learner'),  #since our main targets are learners, I set them as the default role.
+        role='learner',  # always learner on register; admin is seeded separately
         is_active=True
     )
     

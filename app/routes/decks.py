@@ -4,6 +4,7 @@ from sqlalchemy import func
 from datetime import datetime, timezone
 from app import db
 from app.models import User, Deck, Flashcard
+from app.routes.notifications import create_notification
 
 # Initialize the Decks Blueprint
 decks_bp = Blueprint('decks', __name__)
@@ -373,8 +374,8 @@ def get_public_categories():
 
 @decks_bp.route('/public/decks', methods=['GET'])
 def get_public_decks():
-    """Browse public decks without authentication — for guests on the landing page.
-    Supports ?category= and ?search= filters. Returns deck info but NOT flashcard content."""
+    """Browse public decks without authentication — for guests on the page.
+    Supports ?category= and ?search= filters. Returns deck info but not all flashcards content."""
     query = Deck.query.filter_by(is_public=True, is_archived=False)
     
     category = request.args.get('category')
@@ -407,7 +408,7 @@ def get_public_decks():
         "updated_at": deck.updated_at.isoformat()
     } for deck in decks]), 200
   
-  # route for UI deckdrawer before a studysession is intialized  
+  # route for deckdrawer before a studysession is intialized  
 @decks_bp.route('/decks/<int:deck_id>/preview', methods=['GET'])
 def get_deck_preview(deck_id):
     """Public teaser: returns only the first card's question for a public deck.
@@ -485,22 +486,28 @@ def add_to_collection(deck_id):
     if not deck:
         return jsonify({"error": "Deck not found"}), 404
         
-    # Business Rule: Cannot save your own deck
+    # user cannot save their own deck
     if deck.creator_id == current_user_id:
         return jsonify({"error": "You already own this deck"}), 400
         
-    # Business Rule: Only public decks can be added to collections
+    # Only public decks can be added to collections
     if not deck.is_public:
         return jsonify({"error": "Cannot add private decks to collection"}), 403
         
     user = db.session.get(User, current_user_id)
     
-    # Business Rule: Do not duplicate if already saved
+    # Do not duplicate if already saved
     if deck in user.saved_decks:
         return jsonify({"message": "Deck is already in your collection"}), 200
         
     try:
         user.saved_decks.append(deck)
+        create_notification(
+            user_id=current_user_id,
+            message=f'"{deck.title}" was added to your collection.',
+            notification_type='collection_added',
+            related_deck_id=deck.id
+        )
         db.session.commit()
         return jsonify({"message": "Deck added to collection successfully"}), 200
     except Exception as e:
