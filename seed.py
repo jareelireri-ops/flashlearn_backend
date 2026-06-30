@@ -13,8 +13,8 @@ def seed_database():
 
         print("Creating users...")
         admin = User(
-            email="admin@flashlearn.com",
-            password_hash=generate_password_hash("admin123"),
+            email="jareelboi@gmail.com",
+            password_hash=generate_password_hash("PGBWMA11"),
             role="admin",
             name="FL Admin",
             is_active=True
