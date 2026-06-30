@@ -8,9 +8,7 @@ from app.models import User, Deck, Flashcard, Notification, ReviewHistory
 # Initialize the Notifications Blueprint
 notifications_bp = Blueprint('notifications', __name__)
 
-
-# HELPER FUNCTION — call this from any blueprint to create a notification for a user.
-# This keeps notification creation consistent across the entire app.
+# To keep notification creation consistent across the entire app I create a helper
 
 def create_notification(user_id, message, notification_type=None, related_deck_id=None, related_flashcard_id=None):
     """Create and save a notification for a specific user."""

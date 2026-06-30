@@ -99,7 +99,6 @@ class StudySession(db.Model):
     status = db.Column(db.String(20), default='in-progress') 
     
     # this field tracks the index of the current flashcard being studied in the session, allowing for resuming and progress tracking
-    # we refer to its index because the cards are ordered by their creation time. This allows us to easily determine which card the user is currently on without needing to store the entire list of card IDs in the session.
     current_card_index = db.Column(db.Integer, default=0, nullable=False)
     
     start_time = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

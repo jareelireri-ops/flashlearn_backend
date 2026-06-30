@@ -202,12 +202,12 @@ def add_flashcard(deck_id):
         deck_id=deck_id,
         question=data['question'].strip(),
         answer=data['answer'].strip(),
-        difficulty_level=data.get('difficulty_level', 'medium'), # setting the default at medium if not specified
+        difficulty_level=data.get('difficulty_level', 'medium'),
         image_url=data.get('image_url')
     )
 
-    # touch the parent deck's updated_at so "new cards added" is detectable on the frontend,
-    # since onupdate only fires on writes to the Deck row itself, not on child flashcard inserts.
+    # ensure "new cards added" is detectable on the frontend,
+   
     deck.updated_at = datetime.now(timezone.utc)
     
     try:

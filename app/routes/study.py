@@ -21,7 +21,6 @@ REVIEW_INTERVALS = {
 }
 
 # A user can study a deck if they created it, saved it to their collection, or it's public.
-# This is the same permission logic used in decks.py 
 
 def user_can_access_deck(user, deck):
     """Check if a user has permission to study a specific deck."""
@@ -33,11 +32,7 @@ def user_can_access_deck(user, deck):
         return True
     return False
 
-
-
 # STUDY SESSION CONTROL TO START, PAUSE, RESUME, COMPLETE, AND REVIEW CARDS
-
-
 
 @study_bp.route('/study/<int:deck_id>/start', methods=['POST'])
 @jwt_required()
@@ -50,17 +45,17 @@ def start_session(deck_id):
     if not deck:
         return jsonify({"error": "Deck not found"}), 404
 
-    # Verify the user has permission to study this deck
+    # Verifying the user has permission to study this deck
     if not user_can_access_deck(user, deck):
         return jsonify({"error": "You do not have access to this deck"}), 403
 
-    # Check if the deck actually has flashcards to study
+    # Checking if the deck actually has flashcards to study
     card_count = Flashcard.query.filter_by(deck_id=deck_id).count()
     if card_count == 0:
         return jsonify({"error": "This deck has no flashcards to study"}), 400
 
-    # Prevent duplicate sessions — if user already has an in-progress or paused session
-    # for this deck, return that session instead of creating a new one.
+    # Prevent duplicate sessions — if user already has an in-progress session
+    # for the deck.. return that session instead of creating a new one.
     existing_session = StudySession.query.filter_by(
         user_id=current_user_id,
         deck_id=deck_id
@@ -68,8 +63,7 @@ def start_session(deck_id):
         StudySession.status.in_(['in-progress', 'paused'])
     ).first()
 
-    # we also allow the user to force a new session even if one exists, by sending a JSON payload with {"force_new": true}. 
-    # This is useful if they want to start fresh and not continue the previous session. 
+    # also allowing the user to force a new session even if one exists. 
     if existing_session:
         data = request.get_json() or {}
         if data.get('force_new'):
@@ -142,8 +136,7 @@ def get_current_card(session_id):
             session.current_card_index -= 1
 
     # Fetch all flashcards in this deck ordered by creation time.
-    # We use the card's position in this ordered list as the index,
-    # which is what current_card_index tracks (see models.py comment on line 101).
+
     cards = Flashcard.query.filter_by(
         deck_id=session.deck_id
     ).order_by(Flashcard.created_at).all()
@@ -215,13 +208,12 @@ def review_card(session_id):
         return jsonify({"error": "This flashcard does not belong to the current study deck"}), 400
 
     # Calculate the next review date using spaced repetition intervals.
-    # The date is always calculated from NOW, not from any previous due date.
-    # This means if a user reviews an overdue card, the interval starts fresh from today.
+    # The date is always calculated from NOW
     rating = data['rating']
     now = datetime.now(timezone.utc)
     next_review = now + REVIEW_INTERVALS[rating]
 
-    # Create the review history record
+    # Creating the review history record
     review = ReviewHistory(
         user_id=current_user_id,
         flashcard_id=flashcard.id,
@@ -231,7 +223,7 @@ def review_card(session_id):
         next_review_date=next_review
     )
 
-    # Advance the card index so the next call to /card returns the following card
+    # increase the card index so the next call to card returns the following card
     session.current_card_index += 1
 
     try:
@@ -346,7 +338,7 @@ def list_sessions():
 
     query = StudySession.query.filter_by(user_id=current_user_id)
 
-    # Optional filters so the frontend can show e.g. only paused sessions
+    # filters so the frontend can show status of sessions
     status_filter = request.args.get('status')
     if status_filter:
         query = query.filter_by(status=status_filter)
@@ -368,14 +360,7 @@ def list_sessions():
     } for s in sessions]), 200
 
 
-
 # SPACED REPETITION REVIEW QUEUE TO GET DUE CARDS 
-
-# This is the heart of the spaced repetition system.
-# It returns flashcards that are DUE for review — their next_review_date has passed.
-# Hard-rated cards come back after 1 day, so they naturally appear here more often
-# than easy-rated cards (7 days). That's how difficult cards surface more frequently.
-
 
 @study_bp.route('/study/review-queue', methods=['GET'])
 @jwt_required()
@@ -384,9 +369,8 @@ def get_review_queue():
     current_user_id = int(get_jwt_identity())
     now = datetime.now(timezone.utc)
 
-    # We need the LATEST review for each flashcard (a card may have been reviewed
-    # multiple times). We use a subquery to find the most recent review per flashcard,
-    # then filter to only those where next_review_date has passed.
+    # We use the LATEST review for each flashcard.
+
     latest_review_subquery = db.session.query(
         ReviewHistory.flashcard_id,
         func.max(ReviewHistory.reviewed_at).label('latest_review')
@@ -408,14 +392,14 @@ def get_review_queue():
         ReviewHistory.next_review_date <= now
     )
 
-    # Optional filter to get due cards for a specific deck only. BECAUSE a user may have multiple decks, the frontend can request due cards for one deck at a time.
+    # Optional filter to get due cards for a specific deck only. 
     deck_filter = request.args.get('deck_id')
     if deck_filter:
         due_reviews = due_reviews.join(Flashcard).filter(
             Flashcard.deck_id == int(deck_filter)
         )
 
-    # Order by most overdue first — cards that have been waiting the longest appear at the top
+    # Order by most overdue first 
     due_reviews = due_reviews.order_by(ReviewHistory.next_review_date.asc()).all()
 
     return jsonify([{
@@ -430,13 +414,7 @@ def get_review_queue():
     } for review in due_reviews]), 200
 
 
-
-# USER LEARNING ANALYTICS TO PROVIDE INSIGHTS ON THEIR STUDY HABITS
-
-# All analytics endpoints query the ReviewHistory and StudySession tables
-# for the current user and return data formatted for frontend charts and dashboards. 
-# This includes total sessions, streaks, cards due, and performance.
-
+# USER LEARNING ANALYTICS FOR INSIGHTS ON USER STUDY HABITS
 
 @study_bp.route('/study/dashboard', methods=['GET'])
 @jwt_required()
@@ -454,8 +432,7 @@ def dashboard():
     # Count total card reviews ever made
     total_reviews = ReviewHistory.query.filter_by(user_id=current_user_id).count()
 
-    # Count cards that are currently due for review (next_review_date <= now)
-    # We only count the latest review per flashcard (same subquery logic as review queue)
+    # Count cards that are currently due for review
     latest_review_sub = db.session.query(
         ReviewHistory.flashcard_id,
         func.max(ReviewHistory.reviewed_at).label('latest')
@@ -474,7 +451,7 @@ def dashboard():
         ReviewHistory.next_review_date <= now
     ).scalar()
 
-    # Calculate study streak — consecutive days ending today (or yesterday) with at least 1 review
+    # Calculate study streak
     streak = _calculate_study_streak(current_user_id)
 
     return jsonify({
@@ -527,7 +504,7 @@ def analytics_weekly():
     weeks = request.args.get('weeks', 12, type=int)
     start_date = datetime.now(timezone.utc) - timedelta(weeks=weeks)
 
-    # grouping the reviews by the week of the year(isoyear) and counting how many reviews were done in each week
+    # grouping the reviews by the week of the year and counting how many reviews were done in each week
     weekly_data = db.session.query(
         func.extract('isoyear', ReviewHistory.reviewed_at).label('year'),
         func.extract('week', ReviewHistory.reviewed_at).label('week'),
@@ -658,7 +635,7 @@ def analytics_completion():
             })
             continue
 
-        # Count how many UNIQUE flashcards in this deck the user has reviewed at least once
+        # Count how many unique flashcards in this deck the user has reviewed at least once
         cards_reviewed = db.session.query(
             func.count(func.distinct(ReviewHistory.flashcard_id))
         ).join(
@@ -682,14 +659,10 @@ def analytics_completion():
 
 
 #we create a helper function to calculate the user's study streak, which is the number of consecutive days (ending today or yesterday) 
-# where the user completed at least one review.
-
-#the function to calculate study streak how many days they did in a row.
-
 
 def _calculate_study_streak(user_id):
     """Count consecutive days of study activity for a user."""
-    # Get all distinct dates the user has reviewed cards, sorted newest first
+    # Get all unique dates that the user has reviewed cards..sorting from newest first
     review_dates = db.session.query(
         func.date(ReviewHistory.reviewed_at).label('review_date')
     ).filter(
@@ -703,23 +676,22 @@ def _calculate_study_streak(user_id):
     if not review_dates:
         return 0
 
-    # Convert to a list of date objects
+   
     dates = [row.review_date for row in review_dates]
     today = datetime.now(timezone.utc).date()
 
-    # The streak must start from today or yesterday.
-    # If the most recent review date is older than yesterday, the streak is broken.
+    # The streak must start from today or yesterday and If the most recent review date is older than yesterday, the streak is broken.
     if dates[0] < today - timedelta(days=1):
         return 0
 
-    # Count consecutive days walking backward from the most recent review date
+    # Count consecutive days in reverse .from the most recent review date
     streak = 1
     for i in range(1, len(dates)):
         # If the gap between this date and the previous one is exactly 1 day, the streak continues
         if dates[i - 1] - dates[i] == timedelta(days=1):
             streak += 1
         else:
-            # Gap is bigger than 1 day — streak is broken
+         # if Gap is bigger than 1 day the streak is broken
             break
 
     return streak
