@@ -1,7 +1,8 @@
-from flask import Flask
+from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, verify_jwt_in_request, get_jwt_identity
+from flask_jwt_extended.exceptions import JWTExtendedException
 from flask_cors import CORS
 from config import Config
 
@@ -17,7 +18,25 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    CORS(app)
+    CORS(app, origins=app.config['CORS_ORIGINS'], supports_credentials=True)
+
+    @app.before_request
+    def block_suspended_users():
+        """Re-check is_active on every authenticated request so suspension takes effect immediately."""
+        if request.method == 'OPTIONS':
+            return None
+        try:
+            verify_jwt_in_request(optional=True)
+        except JWTExtendedException:
+            return None
+        identity = get_jwt_identity()
+        if identity is None:
+            return None
+        from app.models import User
+        user = db.session.get(User, int(identity))
+        if user and not user.is_active:
+            return jsonify({"error": "Your account has been suspended. Please contact support."}), 403
+        return None
 
     from app.routes.auth import auth_bp
     from app.routes.decks import decks_bp

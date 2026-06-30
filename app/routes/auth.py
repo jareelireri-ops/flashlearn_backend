@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from datetime import datetime, timezone, timedelta
@@ -102,7 +102,7 @@ def profile():
             "created_at": user.created_at
         }), 200
         
-    # we use the empty curly braces as a safety net incase the user sends nothing as an edit to prevent crashes
+    # we use the empty curly braces as a safety net incase the user sends nothing as an edit,,to prevent crashes
     elif request.method == 'PUT':
         data = request.get_json() or {}
         
@@ -139,10 +139,11 @@ def forgot_password():
 
     try:
         db.session.commit()
-        return jsonify({
-            "message": "If that email exists, a reset link has been sent",
-            "reset_token": token
-        }), 200
+        response = {"message": "If that email exists, a reset link has been sent"}
+        # dev-only: keeps local testing working until you wire up email in production
+        if current_app.config.get('DEV_RETURN_RESET_TOKEN'):
+            response["reset_token"] = token
+        return jsonify(response), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to generate reset token", "details": str(e)}), 500
