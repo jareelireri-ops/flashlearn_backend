@@ -20,6 +20,12 @@ def is_admin(user_id):
 def submit_report():
     """Submit a report for an inappropriate deck or flashcard."""
     current_user_id = int(get_jwt_identity())
+
+    # Admins review reports, they don't file them - this also closes off the
+    # API path that the frontend role-gating alone wouldn't stop (e.g. curl/Postman).
+    if is_admin(current_user_id):
+        return jsonify({"error": "Admins review reports, not submit them"}), 403
+
     data = request.get_json() or {}
     
     reason = data.get('reason')
