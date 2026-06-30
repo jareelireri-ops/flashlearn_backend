@@ -7,8 +7,7 @@ app = create_app()
 
 def seed_database():
     with app.app_context():
-        print("Clearing database...")
-        db.drop_all()
+        # db.drop_all()
         db.create_all()
 
         print("Creating users...")
@@ -33,7 +32,6 @@ def seed_database():
 
         print("Populating Decks and Flashcards...")
         
-        # SEED DATA STRUCTURE 
         seed_data = [
             # 1. SOFTWARE ENGINEERING
             {
@@ -163,7 +161,6 @@ def seed_database():
             }
         ]
 
-        # insert into db
         for d_data in seed_data:
             deck = Deck(
                 title=d_data["title"],
@@ -174,7 +171,7 @@ def seed_database():
                 creator_id=creator.id
             )
             db.session.add(deck)
-            db.session.flush() # gets the deck ID before committing
+            db.session.flush()
 
             for q, a in d_data["cards"]:
                 card = Flashcard(
@@ -186,7 +183,7 @@ def seed_database():
                 db.session.add(card)
 
         db.session.commit()
-        print("Database successfully seeded! Landing page is ready for testing.")
+        print("Database successfully seeded!.")
 
 if __name__ == "__main__":
     seed_database()
