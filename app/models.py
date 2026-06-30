@@ -16,8 +16,9 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), default='learner') 
     
+    # i USE TEXT FOR THE P.P  URL since we shall be using base64 uploading format,which will have quite a long string
     name = db.Column(db.String(100), nullable=True)
-    profile_picture_url = db.Column(db.String(255), nullable=True)
+    profile_picture_url = db.Column(db.Text, nullable=True)
     password_reset_token = db.Column(db.String(255), unique=True, nullable=True)
     password_reset_expires = db.Column(db.DateTime(timezone=True), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
