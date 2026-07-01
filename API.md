@@ -1,6 +1,7 @@
 # FlashLearn API Documentation
 
 Base URL (local): `http://127.0.0.1:5000/api`
+Base URL (production): `https://flashlearn-backend-ocnv.onrender.com/api`
 Health check: `GET http://127.0.0.1:5000/`
 
 ## Authentication
@@ -140,9 +141,9 @@ Query params for `/public/decks` and `/library`: `?search=`, `?category=`, `?dif
 | GET | `/study/:deck_id/active` | Yes | Get active/paused session |
 | GET | `/study/sessions/:id/card` | Yes | Get current card |
 | POST | `/study/sessions/:id/review` | Yes | Rate a card |
-| PATCH | `/study/sessions/:id/pause` | Yes | Pause session |
-| PATCH | `/study/sessions/:id/resume` | Yes | Resume session |
-| PATCH | `/study/sessions/:id/complete` | Yes | Complete session |
+| PUT | `/study/sessions/:id/pause` | Yes | Pause session |
+| PUT | `/study/sessions/:id/resume` | Yes | Resume session |
+| PUT | `/study/sessions/:id/complete` | Yes | Complete session |
 | GET | `/study/review-queue` | Yes | Cards due for review |
 | GET | `/study/dashboard` | Yes | Dashboard stats |
 
