@@ -60,19 +60,35 @@ def get_user_decks():
     """Retrieve all decks created by the logged-in user."""
     current_user_id = int(get_jwt_identity())
     
-    user_decks = Deck.query.filter_by(creator_id=current_user_id).all()
-    
-    return jsonify([{
-        "id": deck.id,
-        "title": deck.title,
-        "description": deck.description,
-        "category": deck.category,
-        "tags": deck.tags,
-        "is_public": deck.is_public,
-        "is_archived": deck.is_archived,
-        "difficulty_level": deck.difficulty_level,
-        "created_at": deck.created_at
-    } for deck in user_decks]), 200
+    user_decks_query = Deck.query.filter_by(creator_id=current_user_id)
+
+    # pagination logic: allows users to navigate through large sets of decks without overwhelming the response.
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    pagination = user_decks_query.paginate(page=page, per_page=per_page, error_out=False)
+    user_decks = pagination.items
+
+
+    return jsonify({
+        "decks": [{
+            "id": deck.id,
+            "title": deck.title,
+            "description": deck.description,
+            "category": deck.category,
+            "tags": deck.tags,
+            "is_public": deck.is_public,
+            "is_archived": deck.is_archived,
+            "difficulty_level": deck.difficulty_level,
+            "created_at": deck.created_at
+        } for deck in user_decks],
+      #pagination metadata to help the frontend manage large sets of decks and navigate through them efficiently.
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total": pagination.total,
+        "pages": pagination.pages,
+        "has_next": pagination.has_next
+     
+    }), 200
 
 
 @decks_bp.route('/decks/<int:deck_id>', methods=['GET'])
@@ -173,7 +189,7 @@ def delete_deck(deck_id):
 
 
 
-# Flashcard mgt routes (restricted to the deck owner)
+# Flashcard mgt routes(restricted to the deck owner)
 
 
 @decks_bp.route('/decks/<int:deck_id>/flashcards', methods=['POST'])
@@ -239,15 +255,31 @@ def get_deck_flashcards(deck_id):
     if not deck.is_public and deck.creator_id != current_user_id and not is_saved:
         return jsonify({"error": "Permission denied"}), 403
         
-    cards = Flashcard.query.filter_by(deck_id=deck_id).all()
-    
-    return jsonify([{
-        "id": card.id,
-        "question": card.question,
-        "answer": card.answer,
-        "difficulty_level": card.difficulty_level,
-        "image_url": card.image_url
-    } for card in cards]), 200
+    cards_query = Flashcard.query.filter_by(deck_id=deck_id)
+
+   #pagination logic: allows users to navigate through large sets of flashcards without overwhelming the response.
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    pagination = cards_query.paginate(page=page, per_page=per_page, error_out=False)
+    cards = pagination.items
+  
+
+    return jsonify({
+        "flashcards": [{
+            "id": card.id,
+            "question": card.question,
+            "answer": card.answer,
+            "difficulty_level": card.difficulty_level,
+            "image_url": card.image_url
+        } for card in cards],
+       
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total": pagination.total,
+        "pages": pagination.pages,
+        "has_next": pagination.has_next
+       
+    }), 200
 
 
 @decks_bp.route('/flashcards/<int:card_id>', methods=['PUT'])
@@ -312,46 +344,6 @@ def delete_flashcard(card_id):
         return jsonify({"error": "Failed to delete flashcard", "details": str(e)}), 500
 
 
-# routes for browsing public decks and managing personal collections
-
-@decks_bp.route('/library', methods=['GET'])
-@jwt_required()
-def get_library():
-    """Browse public decks with keyword search and category/difficulty filtering."""
-    query = Deck.query.filter_by(is_public=True, is_archived=False)
-    
-    # 1. Search filter: check keyword matches in title or description
-    keyword = request.args.get('search')
-    if keyword:
-        query = query.filter(
-            (Deck.title.ilike(f'%{keyword}%')) | 
-            (Deck.description.ilike(f'%{keyword}%'))
-        )
-        
-    # 2. Category filter
-    category = request.args.get('category')
-    if category:
-        query = query.filter_by(category=category)
-        
-    # 3. Difficulty filter
-    difficulty = request.args.get('difficulty')
-    if difficulty:
-         query = query.filter(Deck.difficulty_level == difficulty)
-        
-    public_decks = query.all()
-    
-    return jsonify([{
-        "id": deck.id,
-        "title": deck.title,
-        "description": deck.description,
-        "category": deck.category,
-        "tags": deck.tags,
-        "difficulty_level": deck.difficulty_level,
-        "creator": deck.creator.name if deck.creator else "Unknown",
-        "num_flashcards": len(deck.flashcards),
-        "num_learners": deck.learners.count() # Returns count of users studying the deck
-    } for deck in public_decks]), 200
-
 # public routes for landing page
 
 
@@ -393,20 +385,35 @@ def get_public_decks():
     if difficulty:
         query = query.filter(Deck.difficulty_level == difficulty)
  
-    decks = query.all()
+    #  PAGINATION
     
-    return jsonify([{
-        "id": deck.id,
-        "title": deck.title,
-        "description": deck.description,
-        "category": deck.category,
-        "difficulty_level": deck.difficulty_level,
-        "creator": deck.creator.name if deck.creator else "Unknown",
-        "num_flashcards": len(deck.flashcards),
-        "num_learners": deck.learners.count(),
-        "created_at": deck.created_at.isoformat(),
-        "updated_at": deck.updated_at.isoformat()
-    } for deck in decks]), 200
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    decks = pagination.items
+   
+
+    return jsonify({
+        "decks": [{
+            "id": deck.id,
+            "title": deck.title,
+            "description": deck.description,
+            "category": deck.category,
+            "difficulty_level": deck.difficulty_level,
+            "creator": deck.creator.name if deck.creator else "Unknown",
+            "num_flashcards": len(deck.flashcards),
+            "num_learners": deck.learners.count(),
+            "created_at": deck.created_at.isoformat(),
+            "updated_at": deck.updated_at.isoformat()
+        } for deck in decks],
+      
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total": pagination.total,
+        "pages": pagination.pages,
+        "has_next": pagination.has_next
+      
+    }), 200
   
   # route for deckdrawer before a studysession is intialized  
 @decks_bp.route('/decks/<int:deck_id>/preview', methods=['GET'])
@@ -472,8 +479,26 @@ def get_collection():
             "created_at": deck.created_at.isoformat(),
             "updated_at": deck.updated_at.isoformat()
         })
-        
-    return jsonify(collection), 200
+
+    # PAGINATION LOGIC
+    # created_decks and saved_decks are combined into a single collection,
+    # its then paginated based on the page and per_page query parameters
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    total = len(collection)
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated_collection = collection[start:end]
+
+    return jsonify({
+        "collection": paginated_collection,
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "pages": (total + per_page - 1) // per_page,
+        "has_next": end < total
+    }), 200
+  #this returns the decks in the user's collection, both created and saved public decks, with pagination support.
 
 
 @decks_bp.route('/collection/add/<int:deck_id>', methods=['POST'])
