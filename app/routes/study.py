@@ -8,11 +8,8 @@ from app.models import User, Deck, Flashcard, StudySession, ReviewHistory
 # Initialize the Study Blueprint
 study_bp = Blueprint('study', __name__)
 
-
-
 # SPACED REPETITION INTERVALS to determine when a card should be reviewed again
 # based on how the user rated it.
-
 
 REVIEW_INTERVALS = {
     'easy': timedelta(days=7),
@@ -45,17 +42,13 @@ def start_session(deck_id):
     if not deck:
         return jsonify({"error": "Deck not found"}), 404
 
-    # Verifying the user has permission to study this deck
     if not user_can_access_deck(user, deck):
         return jsonify({"error": "You do not have access to this deck"}), 403
 
-    # Checking if the deck actually has flashcards to study
     card_count = Flashcard.query.filter_by(deck_id=deck_id).count()
     if card_count == 0:
         return jsonify({"error": "This deck has no flashcards to study"}), 400
 
-    # Prevent duplicate sessions — if user already has an in-progress session
-    # for the deck.. return that session instead of creating a new one.
     existing_session = StudySession.query.filter_by(
         user_id=current_user_id,
         deck_id=deck_id
@@ -63,7 +56,6 @@ def start_session(deck_id):
         StudySession.status.in_(['in-progress', 'paused'])
     ).first()
 
-    # also allowing the user to force a new session even if one exists. 
     if existing_session:
         data = request.get_json() or {}
         if data.get('force_new'):
@@ -71,6 +63,14 @@ def start_session(deck_id):
             existing_session.end_time = datetime.now(timezone.utc)
             db.session.commit()
         else:
+            if existing_session.status == 'paused':
+                existing_session.status = 'in-progress'
+                db.session.commit()
+            
+            # Fetch ratings already submitted before the pause
+            previous_reviews = ReviewHistory.query.filter_by(session_id=existing_session.id).all()
+            session_ratings = {r.flashcard_id: r.rating for r in previous_reviews}
+                
             return jsonify({
                 "message": "Resuming existing session",
                 "session": {
@@ -80,10 +80,10 @@ def start_session(deck_id):
                     "current_card_index": existing_session.current_card_index,
                     "total_cards": card_count,
                     "start_time": existing_session.start_time.isoformat()
-                }
+                },
+                "session_ratings": session_ratings
             }), 200
 
-    # Create a new study session, starting from the first card
     new_session = StudySession(
         user_id=current_user_id,
         deck_id=deck_id,
@@ -109,11 +109,36 @@ def start_session(deck_id):
         db.session.rollback()
         return jsonify({"error": "Failed to start session", "details": str(e)}), 500
 
+@study_bp.route('/study/<int:deck_id>/active', methods=['GET'])
+@jwt_required()
+def get_active_session(deck_id):
+    """Check if a user has an active or paused session for a deck."""
+    current_user_id = int(get_jwt_identity())
+    
+    session = StudySession.query.filter_by(
+        user_id=current_user_id,
+        deck_id=deck_id
+    ).filter(
+        StudySession.status.in_(['in-progress', 'paused'])
+    ).first()
+
+    if not session:
+        return jsonify({"error": "No active session found"}), 404
+
+    return jsonify({
+        "session": {
+            "id": session.id,
+            "deck_id": session.deck_id,
+            "status": session.status,
+            "current_card_index": session.current_card_index,
+            "start_time": session.start_time.isoformat()
+        }
+    }), 200
 
 @study_bp.route('/study/sessions/<int:session_id>/card', methods=['GET'])
 @jwt_required()
 def get_current_card(session_id):
-    """Get the current flashcard in the study session, with optional forward/backward navigation."""
+    """Get the current flashcard for an active study session."""
     current_user_id = int(get_jwt_identity())
     session = db.session.get(StudySession, session_id)
 
@@ -126,7 +151,6 @@ def get_current_card(session_id):
     if session.status == 'completed':
         return jsonify({"error": "This session is already completed"}), 400
 
-
     direction = request.args.get('direction', 'current')
 
     if direction == 'next':
@@ -135,15 +159,12 @@ def get_current_card(session_id):
         if session.current_card_index > 0:
             session.current_card_index -= 1
 
-    # Fetch all flashcards in this deck ordered by creation time.
-
     cards = Flashcard.query.filter_by(
         deck_id=session.deck_id
     ).order_by(Flashcard.created_at).all()
 
     total_cards = len(cards)
 
-    # If the index is past the last card, the session is complete
     if session.current_card_index >= total_cards:
         db.session.commit()
         return jsonify({
@@ -153,7 +174,6 @@ def get_current_card(session_id):
             "current_card_index": session.current_card_index
         }), 200
 
-    # Get the card at the current index
     current_card = cards[session.current_card_index]
 
     try:
@@ -174,11 +194,10 @@ def get_current_card(session_id):
         db.session.rollback()
         return jsonify({"error": "Failed to fetch card", "details": str(e)}), 500
 
-
 @study_bp.route('/study/sessions/<int:session_id>/review', methods=['POST'])
 @jwt_required()
 def review_card(session_id):
-    """Record a card review with a confidence rating and calculate the next review date."""
+    """Submit a review rating (easy/medium/hard) for the current flashcard."""
     current_user_id = int(get_jwt_identity())
     session = db.session.get(StudySession, session_id)
 
@@ -189,7 +208,10 @@ def review_card(session_id):
         return jsonify({"error": "Unauthorized to access this session"}), 403
 
     if session.status != 'in-progress':
-        return jsonify({"error": "Session is not in progress"}), 400
+        if session.status == 'paused':
+            session.status = 'in-progress'
+        else:
+            return jsonify({"error": "Session is not in progress"}), 400
 
     data = request.get_json() or {}
 
@@ -199,7 +221,6 @@ def review_card(session_id):
     if 'rating' not in data or data['rating'] not in REVIEW_INTERVALS:
         return jsonify({"error": "Rating must be one of: easy, medium, hard"}), 400
 
-    # Verify the flashcard exists and belongs to the deck being studied
     flashcard = db.session.get(Flashcard, data['flashcard_id'])
     if not flashcard:
         return jsonify({"error": "Flashcard not found"}), 404
@@ -207,13 +228,10 @@ def review_card(session_id):
     if flashcard.deck_id != session.deck_id:
         return jsonify({"error": "This flashcard does not belong to the current study deck"}), 400
 
-    # Calculate the next review date using spaced repetition intervals.
-    # The date is always calculated from NOW
     rating = data['rating']
     now = datetime.now(timezone.utc)
     next_review = now + REVIEW_INTERVALS[rating]
 
-    # Creating the review history record
     review = ReviewHistory(
         user_id=current_user_id,
         flashcard_id=flashcard.id,
@@ -223,7 +241,6 @@ def review_card(session_id):
         next_review_date=next_review
     )
 
-    # increase the card index so the next call to card returns the following card
     session.current_card_index += 1
 
     try:
@@ -242,11 +259,10 @@ def review_card(session_id):
         db.session.rollback()
         return jsonify({"error": "Failed to record review", "details": str(e)}), 500
 
-
 @study_bp.route('/study/sessions/<int:session_id>/pause', methods=['PUT'])
 @jwt_required()
 def pause_session(session_id):
-    """Pause an in-progress study session so the user can come back later."""
+    """Pause an active study session."""
     current_user_id = int(get_jwt_identity())
     session = db.session.get(StudySession, session_id)
 
@@ -268,11 +284,10 @@ def pause_session(session_id):
         db.session.rollback()
         return jsonify({"error": "Failed to pause session", "details": str(e)}), 500
 
-
 @study_bp.route('/study/sessions/<int:session_id>/resume', methods=['PUT'])
 @jwt_required()
 def resume_session(session_id):
-    """Resume a paused study session from where the user left off."""
+    """Resume a paused study session."""
     current_user_id = int(get_jwt_identity())
     session = db.session.get(StudySession, session_id)
 
@@ -289,16 +304,23 @@ def resume_session(session_id):
 
     try:
         db.session.commit()
-        return jsonify({"message": "Session resumed", "current_card_index": session.current_card_index}), 200
+        # Fetch ratings already submitted before the pause
+        previous_reviews = ReviewHistory.query.filter_by(session_id=session.id).all()
+        session_ratings = {r.flashcard_id: r.rating for r in previous_reviews}
+        
+        return jsonify({
+            "message": "Session resumed", 
+            "current_card_index": session.current_card_index,
+            "session_ratings": session_ratings
+        }), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to resume session", "details": str(e)}), 500
 
-
 @study_bp.route('/study/sessions/<int:session_id>/complete', methods=['PUT'])
 @jwt_required()
 def complete_session(session_id):
-    """Mark a study session as completed and record the end time."""
+    """Mark a study session as completed."""
     current_user_id = int(get_jwt_identity())
     session = db.session.get(StudySession, session_id)
 
@@ -329,16 +351,13 @@ def complete_session(session_id):
         db.session.rollback()
         return jsonify({"error": "Failed to complete session", "details": str(e)}), 500
 
-
 @study_bp.route('/study/sessions', methods=['GET'])
 @jwt_required()
 def list_sessions():
-    """List all study sessions for the current user, with optional status and deck filters."""
+    """List all study sessions for the current user."""
     current_user_id = int(get_jwt_identity())
-
     query = StudySession.query.filter_by(user_id=current_user_id)
 
-    # filters so the frontend can show status of sessions
     status_filter = request.args.get('status')
     if status_filter:
         query = query.filter_by(status=status_filter)
@@ -359,17 +378,12 @@ def list_sessions():
         "end_time": s.end_time.isoformat() if s.end_time else None
     } for s in sessions]), 200
 
-
-# SPACED REPETITION REVIEW QUEUE TO GET DUE CARDS 
-
 @study_bp.route('/study/review-queue', methods=['GET'])
 @jwt_required()
 def get_review_queue():
-    """Get all flashcards that are due for review based on spaced repetition scheduling."""
+    """Get a list of flashcards that are due for review based on spaced repetition."""
     current_user_id = int(get_jwt_identity())
     now = datetime.now(timezone.utc)
-
-    # We use the LATEST review for each flashcard.
 
     latest_review_subquery = db.session.query(
         ReviewHistory.flashcard_id,
@@ -380,7 +394,6 @@ def get_review_queue():
         ReviewHistory.flashcard_id
     ).subquery()
 
-    # Join to get the actual ReviewHistory rows, then filter by due date
     due_reviews = db.session.query(ReviewHistory).join(
         latest_review_subquery,
         db.and_(
@@ -392,14 +405,12 @@ def get_review_queue():
         ReviewHistory.next_review_date <= now
     )
 
-    # Optional filter to get due cards for a specific deck only. 
     deck_filter = request.args.get('deck_id')
     if deck_filter:
         due_reviews = due_reviews.join(Flashcard).filter(
             Flashcard.deck_id == int(deck_filter)
         )
 
-    # Order by most overdue first 
     due_reviews = due_reviews.order_by(ReviewHistory.next_review_date.asc()).all()
 
     return jsonify([{
@@ -413,26 +424,20 @@ def get_review_queue():
         "days_overdue": (now - review.next_review_date).days
     } for review in due_reviews]), 200
 
-
-# USER LEARNING ANALYTICS FOR INSIGHTS ON USER STUDY HABITS
-
 @study_bp.route('/study/dashboard', methods=['GET'])
 @jwt_required()
 def dashboard():
-    """Get an overview of the user's study activity: total sessions, reviews, streak, cards due."""
+    """Get high-level study statistics for the user dashboard."""
     current_user_id = int(get_jwt_identity())
     now = datetime.now(timezone.utc)
 
-    # Count total completed study sessions
     total_sessions = StudySession.query.filter_by(
         user_id=current_user_id,
         status='completed'
     ).count()
 
-    # Count total card reviews ever made
     total_reviews = ReviewHistory.query.filter_by(user_id=current_user_id).count()
 
-    # Count cards that are currently due for review
     latest_review_sub = db.session.query(
         ReviewHistory.flashcard_id,
         func.max(ReviewHistory.reviewed_at).label('latest')
@@ -451,7 +456,6 @@ def dashboard():
         ReviewHistory.next_review_date <= now
     ).scalar()
 
-    # Calculate study streak
     streak = _calculate_study_streak(current_user_id)
 
     return jsonify({
@@ -461,12 +465,10 @@ def dashboard():
         "cards_due_today": cards_due or 0
     }), 200
 
-
 @study_bp.route('/study/analytics/daily', methods=['GET'])
 @jwt_required()
 def analytics_daily():
-    """Get the number of cards reviewed per day for charting. Defaults to last 30 days.
-    Zero-fills days with no activity so the response always has exactly `days` entries."""
+    """Get daily review counts for the last X days."""
     current_user_id = int(get_jwt_identity())
     days = request.args.get('days', 30, type=int)
     today = datetime.now(timezone.utc).date()
@@ -495,16 +497,14 @@ def analytics_daily():
 
     return jsonify(result), 200
 
-
 @study_bp.route('/study/analytics/weekly', methods=['GET'])
 @jwt_required()
 def analytics_weekly():
-    """Get cards reviewed per week for the past 12 weeks."""
+    """Get weekly review counts for the last X weeks."""
     current_user_id = int(get_jwt_identity())
     weeks = request.args.get('weeks', 12, type=int)
     start_date = datetime.now(timezone.utc) - timedelta(weeks=weeks)
 
-    # grouping the reviews by the week of the year and counting how many reviews were done in each week
     weekly_data = db.session.query(
         func.extract('isoyear', ReviewHistory.reviewed_at).label('year'),
         func.extract('week', ReviewHistory.reviewed_at).label('week'),
@@ -520,11 +520,10 @@ def analytics_weekly():
         "cards_reviewed": row.cards_reviewed
     } for row in weekly_data]), 200
 
-
 @study_bp.route('/study/analytics/monthly', methods=['GET'])
 @jwt_required()
 def analytics_monthly():
-    """Get cards reviewed per month for the past 12 months."""
+    """Get monthly review counts for the last X months."""
     current_user_id = int(get_jwt_identity())
     months = request.args.get('months', 12, type=int)
     start_date = datetime.now(timezone.utc) - timedelta(days=months * 30)
@@ -544,14 +543,12 @@ def analytics_monthly():
         "cards_reviewed": row.cards_reviewed
     } for row in monthly_data]), 200
 
-
 @study_bp.route('/study/analytics/top-decks', methods=['GET'])
 @jwt_required()
 def analytics_top_decks():
-    """Get the user's top 5 most studied decks ranked by total reviews."""
+    """Get the user's most reviewed decks."""
     current_user_id = int(get_jwt_identity())
 
-    # Join ReviewHistory → Flashcard → Deck to count reviews per deck
     top_decks = db.session.query(
         Deck.id,
         Deck.title,
@@ -574,11 +571,10 @@ def analytics_top_decks():
         "total_reviews": row.total_reviews
     } for row in top_decks]), 200
 
-
 @study_bp.route('/study/analytics/difficult-cards', methods=['GET'])
 @jwt_required()
 def analytics_difficult_cards():
-    """Get the flashcards the user struggles with most, ranked by number of 'hard' ratings."""
+    """Get the cards the user most frequently rates as 'hard'."""
     current_user_id = int(get_jwt_identity())
 
     difficult = db.session.query(
@@ -608,15 +604,13 @@ def analytics_difficult_cards():
         "hard_count": row.hard_count
     } for row in difficult]), 200
 
-
 @study_bp.route('/study/analytics/completion', methods=['GET'])
 @jwt_required()
 def analytics_completion():
-    """Get completion percentages for each deck in the user's collection."""
+    """Get completion percentage for each of the user's decks."""
     current_user_id = int(get_jwt_identity())
     user = db.session.get(User, current_user_id)
 
-    # Gather all decks the user has access to (created + saved)
     created_decks = Deck.query.filter_by(creator_id=current_user_id).all()
     saved_decks = user.saved_decks
     all_decks = list(created_decks) + list(saved_decks)
@@ -635,7 +629,6 @@ def analytics_completion():
             })
             continue
 
-        # Count how many unique flashcards in this deck the user has reviewed at least once
         cards_reviewed = db.session.query(
             func.count(func.distinct(ReviewHistory.flashcard_id))
         ).join(
@@ -658,7 +651,7 @@ def analytics_completion():
     return jsonify(completion_data), 200
 
 
-#we create a helper function to calculate the user's study streak, which is the number of consecutive days (ending today or yesterday) 
+#create a helper function to calculate the user's study streak, which is the number of consecutive days (ending today or yesterday) 
 
 def _calculate_study_streak(user_id):
     """Count consecutive days of study activity for a user."""
@@ -687,11 +680,10 @@ def _calculate_study_streak(user_id):
     # Count consecutive days in reverse .from the most recent review date
     streak = 1
     for i in range(1, len(dates)):
-        # If the gap between this date and the previous one is exactly 1 day, the streak continues
+        # If the gap between this date and the previous one is exactly 1 day,
         if dates[i - 1] - dates[i] == timedelta(days=1):
             streak += 1
         else:
-         # if Gap is bigger than 1 day the streak is broken
             break
 
     return streak

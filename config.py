@@ -15,6 +15,12 @@ class Config:
     # since the app does not need a signaling feature, disable sqlalchemy-track modifications
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # Prevent the database connection from being closed due to inactivity
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_recycle": 280,
+    }
+
     # jwt for authentication and secret key for signing iN, using environment variables for security
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-secret-key-change-in-production')
     
@@ -31,5 +37,5 @@ class Config:
         if origin.strip()
     ]
 
-    # local dev only: return reset_token in forgot-password JSON when no email service is wired up yet
+    # local dev only: return reset_token in forgot-password JSON since no email service is wired up yet
     DEV_RETURN_RESET_TOKEN = os.environ.get('DEV_RETURN_RESET_TOKEN', 'false').lower() == 'true'
