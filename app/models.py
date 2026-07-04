@@ -2,7 +2,7 @@ from app import db
 from datetime import datetime, timezone
 from sqlalchemy.orm import validates
 
-# 4. USER LEARNING COLLECTIONS
+#  USER LEARNING COLLECTIONS
 user_collection = db.Table('user_collection',
     db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
     db.Column('deck_id', db.Integer, db.ForeignKey('decks.id', ondelete='CASCADE'), primary_key=True)

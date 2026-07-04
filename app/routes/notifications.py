@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime, timezone
 from sqlalchemy import func
@@ -87,6 +87,7 @@ def mark_as_read(notification_id):
         return jsonify({"message": "Notification marked as read"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"mark_as_read failed for notification_id={notification_id}: {str(e)}")
         return jsonify({"error": "Failed to update notification", "details": str(e)}), 500
 
 
@@ -105,6 +106,7 @@ def mark_all_as_read():
         return jsonify({"message": "All notifications marked as read"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"mark_all_as_read failed for user_id={current_user_id}: {str(e)}")
         return jsonify({"error": "Failed to update notifications", "details": str(e)}), 500
 
 
@@ -127,6 +129,7 @@ def delete_notification(notification_id):
         return jsonify({"message": "Notification deleted"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"delete_notification failed for notification_id={notification_id}: {str(e)}")
         return jsonify({"error": "Failed to delete notification", "details": str(e)}), 500
 
 
@@ -188,4 +191,5 @@ def check_due_cards():
         return jsonify({"message": "Due card notification created", "cards_due": cards_due}), 201
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"check_due_cards failed for user_id={current_user_id}: {str(e)}")
         return jsonify({"error": "Failed to create notification", "details": str(e)}), 500

@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import User, Deck, Flashcard, Report
@@ -50,6 +50,7 @@ def submit_report():
         return jsonify({"message": "Report submitted successfully"}), 201
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"submit_report failed: {str(e)}")
         return jsonify({"error": "Failed to submit report", "details": str(e)}), 500
 
 
@@ -101,6 +102,7 @@ def update_user_status(user_id):
         return jsonify({"message": f"User successfully {status_msg}"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"update_user_status failed for user_id={user_id}: {str(e)}")
         return jsonify({"error": "Failed to update user status", "details": str(e)}), 500
 
 @admin_bp.route('/admin/reports', methods=['GET'])
@@ -149,6 +151,7 @@ def resolve_report(report_id):
         return jsonify({"message": "Report status updated"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"resolve_report failed for report_id={report_id}: {str(e)}")
         return jsonify({"error": "Failed to update report", "details": str(e)}), 500
 
 @admin_bp.route('/admin/content', methods=['DELETE'])
@@ -180,4 +183,5 @@ def admin_delete_content():
         return jsonify({"error": "Content not found"}), 404
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"admin_delete_content failed (deck_id={deck_id}, flashcard_id={flashcard_id}): {str(e)}")
         return jsonify({"error": "Failed to remove content", "details": str(e)}), 500

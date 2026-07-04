@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import func, desc
@@ -107,6 +107,7 @@ def start_session(deck_id):
         }), 201
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"start_session failed for deck_id={deck_id}: {str(e)}")
         return jsonify({"error": "Failed to start session", "details": str(e)}), 500
 
 @study_bp.route('/study/<int:deck_id>/active', methods=['GET'])
@@ -192,6 +193,7 @@ def get_current_card(session_id):
         }), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"get_current_card failed for session_id={session_id}: {str(e)}")
         return jsonify({"error": "Failed to fetch card", "details": str(e)}), 500
 
 @study_bp.route('/study/sessions/<int:session_id>/review', methods=['POST'])
@@ -257,6 +259,7 @@ def review_card(session_id):
         }), 201
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"review_card failed for session_id={session_id}: {str(e)}")
         return jsonify({"error": "Failed to record review", "details": str(e)}), 500
 
 @study_bp.route('/study/sessions/<int:session_id>/pause', methods=['PUT'])
@@ -282,6 +285,7 @@ def pause_session(session_id):
         return jsonify({"message": "Session paused", "current_card_index": session.current_card_index}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"pause_session failed for session_id={session_id}: {str(e)}")
         return jsonify({"error": "Failed to pause session", "details": str(e)}), 500
 
 @study_bp.route('/study/sessions/<int:session_id>/resume', methods=['PUT'])
@@ -315,6 +319,7 @@ def resume_session(session_id):
         }), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"resume_session failed for session_id={session_id}: {str(e)}")
         return jsonify({"error": "Failed to resume session", "details": str(e)}), 500
 
 @study_bp.route('/study/sessions/<int:session_id>/complete', methods=['PUT'])
@@ -349,6 +354,7 @@ def complete_session(session_id):
         }), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"complete_session failed for session_id={session_id}: {str(e)}")
         return jsonify({"error": "Failed to complete session", "details": str(e)}), 500
 
 @study_bp.route('/study/sessions', methods=['GET'])
@@ -378,6 +384,9 @@ def list_sessions():
         "end_time": s.end_time.isoformat() if s.end_time else None
     } for s in sessions]), 200
 
+# we added a new endpoint to get the review queue for the user,
+# which is a list of flashcards that are due for review based on spaced repetition. 
+# This endpoint will help users see which cards they need to review next.
 @study_bp.route('/study/review-queue', methods=['GET'])
 @jwt_required()
 def get_review_queue():

@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import func 
 from datetime import datetime, timezone
@@ -8,6 +8,65 @@ from app.routes.notifications import create_notification
 
 # Initialize the Decks Blueprint
 decks_bp = Blueprint('decks', __name__)
+
+
+
+# SHARED PAGINATION HELPERS 
+# Every route that paginates 
+# calls one of these instead of re-writing the page/per_page math itself.
+# That way all 4 endpoints always return the exact same JSON shape for pagination metadata, and the frontend can handle them all identically.
+
+
+MAX_PER_PAGE = 100  # hard ceiling so nobody can request ?per_page=999999 and blow up the DB
+
+
+def get_pagination_params():
+    """Reads page/per_page from the query string with the same defaults
+    and the same upper bound, every time it's called."""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+
+    page = max(page, 1)
+    per_page = max(1, min(per_page, MAX_PER_PAGE))
+
+    return page, per_page
+
+
+def paginate_query(query, page, per_page):
+    """Paginates a SQLAlchemy query (DB-level — only the current page is
+    actually fetched from the database). Returns (items, meta_dict)."""
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    meta = {
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "total": pagination.total,
+        "pages": pagination.pages,
+        "has_next": pagination.has_next,
+        "has_prev": pagination.has_prev,
+    }
+    return pagination.items, meta
+
+
+def paginate_list(items, page, per_page):
+    """Paginates an in-memory Python list. Used by get_collection, since it
+    merges two separate queries before pagination can happen. Returns the
+    SAME meta shape as paginate_query, so every paginated endpoint in this
+    file looks identical to the frontend."""
+    total = len(items)
+    pages = (total + per_page - 1) // per_page if total > 0 else 1
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_items = items[start:end]
+
+    meta = {
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "pages": pages,
+        "has_next": end < total,
+        "has_prev": page > 1,
+    }
+    return page_items, meta
 
 
 # this decorator ensures only users with ajwt token can access the CRUD operations for decks and flashcards, 
@@ -49,6 +108,7 @@ def create_deck():
         }), 201
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"create_deck failed: {str(e)}")
         return jsonify({"error": "Failed to create deck", "details": str(e)}), 500
     
     
@@ -63,11 +123,8 @@ def get_user_decks():
     user_decks_query = Deck.query.filter_by(creator_id=current_user_id)
 
     # pagination logic: allows users to navigate through large sets of decks without overwhelming the response.
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    pagination = user_decks_query.paginate(page=page, per_page=per_page, error_out=False)
-    user_decks = pagination.items
-
+    page, per_page = get_pagination_params()
+    user_decks, meta = paginate_query(user_decks_query, page, per_page)
 
     return jsonify({
         "decks": [{
@@ -81,13 +138,8 @@ def get_user_decks():
             "difficulty_level": deck.difficulty_level,
             "created_at": deck.created_at
         } for deck in user_decks],
-      #pagination metadata to help the frontend manage large sets of decks and navigate through them efficiently.
-        "page": pagination.page,
-        "per_page": pagination.per_page,
-        "total": pagination.total,
-        "pages": pagination.pages,
-        "has_next": pagination.has_next
-     
+        # pagination metadata to help the frontend manage large sets of decks and navigate through them efficiently.
+        **meta
     }), 200
 
 
@@ -162,6 +214,7 @@ def update_deck(deck_id):
         return jsonify({"message": "Deck updated successfully"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"update_deck failed for deck_id={deck_id}: {str(e)}")
         return jsonify({"error": "Failed to update deck", "details": str(e)}), 500
 
 
@@ -185,6 +238,7 @@ def delete_deck(deck_id):
         return jsonify({"message": "Deck deleted successfully"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"delete_deck failed for deck_id={deck_id}: {str(e)}")
         return jsonify({"error": "Failed to delete deck", "details": str(e)}), 500
 
 
@@ -235,6 +289,7 @@ def add_flashcard(deck_id):
         }), 201
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"add_flashcard failed for deck_id={deck_id}: {str(e)}")
         return jsonify({"error": "Failed to add flashcard", "details": str(e)}), 500
 
 
@@ -257,12 +312,9 @@ def get_deck_flashcards(deck_id):
         
     cards_query = Flashcard.query.filter_by(deck_id=deck_id)
 
-   #pagination logic: allows users to navigate through large sets of flashcards without overwhelming the response.
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    pagination = cards_query.paginate(page=page, per_page=per_page, error_out=False)
-    cards = pagination.items
-  
+    # pagination logic: allows users to navigate through large sets of flashcards without overwhelming the response.
+    page, per_page = get_pagination_params()
+    cards, meta = paginate_query(cards_query, page, per_page)
 
     return jsonify({
         "flashcards": [{
@@ -272,13 +324,7 @@ def get_deck_flashcards(deck_id):
             "difficulty_level": card.difficulty_level,
             "image_url": card.image_url
         } for card in cards],
-       
-        "page": pagination.page,
-        "per_page": pagination.per_page,
-        "total": pagination.total,
-        "pages": pagination.pages,
-        "has_next": pagination.has_next
-       
+        **meta
     }), 200
 
 
@@ -318,6 +364,7 @@ def update_flashcard(card_id):
         return jsonify({"message": "Flashcard updated successfully"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"update_flashcard failed for card_id={card_id}: {str(e)}")
         return jsonify({"error": "Failed to update flashcard", "details": str(e)}), 500
 
 
@@ -341,7 +388,9 @@ def delete_flashcard(card_id):
         return jsonify({"message": "Flashcard deleted successfully"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"delete_flashcard failed for card_id={card_id}: {str(e)}")
         return jsonify({"error": "Failed to delete flashcard", "details": str(e)}), 500
+
 
 
 # public routes for landing page
@@ -387,11 +436,8 @@ def get_public_decks():
  
     #  PAGINATION
     
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    decks = pagination.items
-   
+    page, per_page = get_pagination_params()
+    decks, meta = paginate_query(query, page, per_page)
 
     return jsonify({
         "decks": [{
@@ -406,13 +452,7 @@ def get_public_decks():
             "created_at": deck.created_at.isoformat(),
             "updated_at": deck.updated_at.isoformat()
         } for deck in decks],
-      
-        "page": pagination.page,
-        "per_page": pagination.per_page,
-        "total": pagination.total,
-        "pages": pagination.pages,
-        "has_next": pagination.has_next
-      
+        **meta
     }), 200
   
   # route for deckdrawer before a studysession is intialized  
@@ -482,21 +522,14 @@ def get_collection():
 
     # PAGINATION LOGIC
     # created_decks and saved_decks are combined into a single collection,
-    # its then paginated based on the page and per_page query parameters
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    total = len(collection)
-    start = (page - 1) * per_page
-    end = start + per_page
-    paginated_collection = collection[start:end]
+    # then paginated in-memory with paginate_list — same helper "family" as
+    # paginate_query, so the response shape matches every other endpoint.
+    page, per_page = get_pagination_params()
+    paginated_collection, meta = paginate_list(collection, page, per_page)
 
     return jsonify({
         "collection": paginated_collection,
-        "page": page,
-        "per_page": per_page,
-        "total": total,
-        "pages": (total + per_page - 1) // per_page,
-        "has_next": end < total
+        **meta
     }), 200
   #this returns the decks in the user's collection, both created and saved public decks, with pagination support.
 
@@ -537,6 +570,7 @@ def add_to_collection(deck_id):
         return jsonify({"message": "Deck added to collection successfully"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"add_to_collection failed for deck_id={deck_id}: {str(e)}")
         return jsonify({"error": "Failed to add to collection", "details": str(e)}), 500
 
 
@@ -561,4 +595,5 @@ def remove_from_collection(deck_id):
         return jsonify({"message": "Deck removed from collection successfully"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"remove_from_collection failed for deck_id={deck_id}: {str(e)}")
         return jsonify({"error": "Failed to remove from collection", "details": str(e)}), 500

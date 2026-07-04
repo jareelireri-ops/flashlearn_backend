@@ -128,6 +128,7 @@ def register():
         return jsonify({"message": "User has been registered successfully", "user_id": new_user.id}), 201
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"register failed: {str(e)}")
         return jsonify({"error": "Database recording failed", "details": str(e)}), 500
 
 
@@ -206,6 +207,7 @@ def profile():
             return jsonify({"message": "Profile has been updated successfully"}), 200
         except Exception as e:
             db.session.rollback()
+            current_app.logger.error(f"profile update failed for user_id={current_user_id}: {str(e)}")
             return jsonify({"error": "Failed to update the database profile rows", "details": str(e)}), 500
 
 
@@ -235,6 +237,7 @@ def forgot_password():
         return jsonify(response), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"forgot_password failed: {str(e)}")
         return jsonify({"error": "Failed to generate reset token", "details": str(e)}), 500
 
 
@@ -274,4 +277,5 @@ def reset_password():
         return jsonify({"message": "Password has been reset successfully"}), 200
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"reset_password failed: {str(e)}")
         return jsonify({"error": "Failed to reset password", "details": str(e)}), 500
