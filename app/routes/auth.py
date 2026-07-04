@@ -2,12 +2,81 @@ from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from datetime import datetime, timezone, timedelta
+import re
 import secrets
 from app import db
 from app.models import User
 
 # Initialize the Authentication Blueprint
 auth_bp = Blueprint('auth', __name__)
+
+# validation rules live here so both the register and reset-password routes
+# use the exact same standard, and so /auth/requirements can hand the same
+# numbers to the frontend instead of the frontend hardcoding its own copy
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 128
+NAME_MIN_LENGTH = 2
+NAME_MAX_LENGTH = 100
+EMAIL_MAX_LENGTH = 254
+EMAIL_REGEX = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+SYMBOL_REGEX = re.compile(r'[^A-Za-z0-9]')
+
+
+def validate_email_format(email):
+    # returns True if the email has a real @ + domain + dot shape, not just "contains @"
+    return bool(EMAIL_REGEX.match(email))
+
+
+def validate_name_length(name):
+    # returns (is_valid, error_message)
+    if len(name.strip()) < NAME_MIN_LENGTH:
+        return False, f"Name must be at least {NAME_MIN_LENGTH} characters"
+    if len(name) > NAME_MAX_LENGTH:
+        return False, f"Name must be no more than {NAME_MAX_LENGTH} characters"
+    return True, None
+
+
+def validate_password_strength(password):
+    # returns (is_valid, error_message). checked in order so the user
+    # gets told about one thing at a time instead of a wall of errors
+    if len(password) < PASSWORD_MIN_LENGTH:
+        return False, f"Password must be at least {PASSWORD_MIN_LENGTH} characters"
+    if len(password) > PASSWORD_MAX_LENGTH:
+        return False, f"Password must be no more than {PASSWORD_MAX_LENGTH} characters"
+    if not re.search(r'[A-Z]', password):
+        return False, "Password must include at least one uppercase letter"
+    if not re.search(r'[a-z]', password):
+        return False, "Password must include at least one lowercase letter"
+    if not re.search(r'[0-9]', password):
+        return False, "Password must include at least one number"
+    if not SYMBOL_REGEX.search(password):
+        return False, "Password must include at least one symbol"
+    return True, None
+
+
+@auth_bp.route('/requirements', methods=['GET'])
+def requirements():
+    # single source of truth for the frontend, so validation rules never drift
+    # out of sync between client and server
+    return jsonify({
+        "password": {
+            "min_length": PASSWORD_MIN_LENGTH,
+            "max_length": PASSWORD_MAX_LENGTH,
+            "requires_letter": True,
+            "requires_lowercase": True,
+            "requires_number": True,
+            "requires_symbol": True
+        },
+        "name": {
+            "min_length": NAME_MIN_LENGTH,
+            "max_length": NAME_MAX_LENGTH
+        },
+        "email": {
+            "max_length": EMAIL_MAX_LENGTH,
+            "description": "Must be a valid email address (e.g. name@example.com)"
+        }
+    }), 200
+
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
@@ -19,7 +88,24 @@ def register():
     
     #we strip the spaces and convert the email to lowercase as we did in models.py.
     email_input = data['email'].strip().lower()
-        
+
+    # reject malformed emails before we even touch the database
+    if not validate_email_format(email_input):
+        return jsonify({"error": "Please provide a valid email address"}), 400
+
+    if len(email_input) > EMAIL_MAX_LENGTH:
+        return jsonify({"error": f"Email must be no more than {EMAIL_MAX_LENGTH} characters"}), 400
+
+    # enforce name length so the database column and UI never get an oversized value
+    is_valid, name_error = validate_name_length(data['name'])
+    if not is_valid:
+        return jsonify({"error": name_error}), 400
+
+    # enforce password strength server-side, since frontend checks can be bypassed
+    is_valid, password_error = validate_password_strength(data['password'])
+    if not is_valid:
+        return jsonify({"error": password_error}), 400
+
     # Enforce unique email check , using .first() to stop the query after finding the first match.
     if User.query.filter_by(email=email_input).first():
         return jsonify({"error": "This email address is already registered"}), 400
@@ -108,6 +194,9 @@ def profile():
         
         # allow users to update their name and profile picture, but not their email or role through this endpoint .
         if 'name' in data:
+            is_valid, name_error = validate_name_length(data['name'])
+            if not is_valid:
+                return jsonify({"error": name_error}), 400
             user.name = data['name']
         if 'profile_picture_url' in data:
             user.profile_picture_url = data['profile_picture_url']
@@ -157,6 +246,11 @@ def reset_password():
 
     if 'token' not in data or 'new_password' not in data:
         return jsonify({"error": "Token and new_password are required"}), 400
+
+    # enforce the same password strength rule used at registration
+    is_valid, password_error = validate_password_strength(data['new_password'])
+    if not is_valid:
+        return jsonify({"error": password_error}), 400
 
     user = User.query.filter_by(password_reset_token=data['token']).first()
 
