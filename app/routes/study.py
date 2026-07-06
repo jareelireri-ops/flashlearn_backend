@@ -384,9 +384,9 @@ def list_sessions():
         "end_time": s.end_time.isoformat() if s.end_time else None
     } for s in sessions]), 200
 
-# we added a new endpoint to get the review queue for the user,
-# which is a list of flashcards that are due for review based on spaced repetition. 
-# This endpoint will help users see which cards they need to review next.
+# added endpoint to get the review queue for the user,
+# THIS endpoint returns a list of flashcards that are due for review based on the spaced repetition algorithm,
+# along with their last rating and next review date.
 @study_bp.route('/study/review-queue', methods=['GET'])
 @jwt_required()
 def get_review_queue():
