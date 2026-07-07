@@ -10,7 +10,7 @@ with app.app_context():
     if admin:
         admin.email = "jareelboi@gmail.com"
         admin.name = "Jareel Boi"
-        admin.password_hash = generate_password_hash("PGBWMA11")
+        admin.password_hash = generate_password_hash("PGBWMA11*a")
         db.session.commit()
         print("Admin updated successfully.")
     else:
