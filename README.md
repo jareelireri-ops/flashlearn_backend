@@ -1,74 +1,76 @@
 # FlashLearn — Backend
 
-This is the backend API that runs the FlashLearn platform. It handles logging users in safely, tracking study history, calculating spaced repetition timelines, and sorting content reports for administrators.
+This is the backend API for FlashLearn. It handles user authentication, tracks study history, calculates spaced repetition schedules, and manages content reports for admins.
 
 * **Live API:** https://flashlearn-backend-ocnv.onrender.com
 * **Frontend App:** https://flashlearn-frontend-ten.vercel.app
 
 ---
 
-## Core Database Layout & Smart Design Choice
+## Database Design Notes
 
-We designed this backend to be smart about how it handles data, making sure it handles real-world situations smoothly:
+A few decisions here aren't obvious from the models alone, so worth explaining:
 
-### 1. Sharing Decks Without Copying Data
-* **No Wasted Space:** When a user saves a public deck from the library to their personal dashboard, the app doesn't make a duplicate copy of the deck. Instead, it uses a quick link table (`user_collection`) to connect the user to the original deck.
-* **Instant Updates:** If the original creator edits a card or fixes a typo, every student tracking that deck instantly sees the update.
+**Shared decks don't get copied**
+When a user adds a public deck to their library, we don't duplicate the deck's rows. We just add an entry to a join table (`user_collection`) linking the user to the original deck. If the original creator fixes a typo or edits a card, everyone who has that deck sees the update immediately — there's nothing to keep in sync.
 
-### 2. Guarding Student Progress
-* **The Safety Net:** If a popular community creator decides to delete their account, a basic app would accidentally delete all their decks too. That would break the dashboards of hundreds of students who were studying them.
-* **How We Fixed It:** Our system safely disconnects the creator's ID but keeps the deck alive in the database, meaning students never lose their study progress.
+**Deleting a creator's account doesn't delete their decks**
+If a user who created a popular public deck deletes their account, we don't want that to break the deck for everyone else studying it. So instead of cascading the delete, we just remove the link to that user's ID and leave the deck itself in place. Students keep their progress either way.
 
-### 3. Separating Cards From Personal Scores
-* **Individual Timers:** Flashcards only store the question and answer. All personal confidence scores and review schedules are saved in a completely separate table (`ReviewHistory`).
-* **Multi-User Study:** This allows thousands of students to study the exact same public deck at the same time without their review histories getting mixed up.
-  * Pressing **Easy** ➔ Shows the card again in 7 days.
-  * Pressing **Medium** ➔ Shows the card again in 3 days.
-  * Pressing **Hard** ➔ Shows the card again tomorrow.
+**Flashcards are separate from personal progress**
+A flashcard row only holds the question and answer. Review scores and scheduling live in their own table (`ReviewHistory`), tied to the user, not the card. That's what lets a few thousand people study the same public deck at once without their review histories overlapping.
 
-### 4. Bouncers & Security Checks
-* **Identity Protection:** Before letting someone edit or delete a card, the backend asks: *"Are you the person who created this?"* If not, it blocks them. This keeps public decks safe from being altered by random viewers.
-* **Admin Controls:** Only users flagged as `admin` can look at content reports or suspend/reactivate troublesome accounts.
+Spaced repetition logic:
+- **Easy** → card comes back in 7 days
+- **Medium** → card comes back in 3 days
+- **Hard** → card comes back tomorrow
+
+**Ownership checks and admin access**
+Before letting someone edit or delete a card, the backend checks whether they're the creator. If not, the request is blocked. Admin-only routes (content reports, suspending accounts) are gated behind an `admin` role check.
 
 ---
 
 ## Tech Stack
-* **Language & Framework:** Python & Flask (organized into clean, feature-specific modules)
-* **Database Management:** PostgreSQL with SQLAlchemy and Flask-Migrate for version tracking
-* **Session Safety:** Flask-JWT-Extended (secure digital key passes for logged-in users)
-* **Production Gateway:** Gunicorn & Web Hosting Configurations (`Procfile`)
+
+| Layer | Technology |
+|---|---|
+| Language/Framework | Python, Flask |
+| Database | PostgreSQL, SQLAlchemy, Flask-Migrate |
+| Auth | Flask-JWT-Extended |
+| Deployment | Gunicorn, Procfile |
 
 ---
 
 ## Project Structure
+
 ```text
 flashlearn_backend/
 ├── app/
-│   ├── routes/              # Split code folders managing features
-│   │   ├── admin.py         # Moderation and user controls
-│   │   ├── auth.py          # Signup, logins, and profile updates
-│   │   ├── decks.py         # Deck creation, updates, and library searches
-│   │   ├── notifications.py # Review reminders and alerts
-│   │   └── study.py         # Card reviews and session bookmark tracking
-│   ├── __init__.py          # Main app constructor and settings
-│   └── models.py            # Database tables and field rules
-├── migrations/              # Database version control folder
-├── API.md                   # Full list of available endpoint URLs
-├── config.py                # System settings loader
-├── FLASHLEARN_ERD.png       # Visual blueprint of database tables
-├── Procfile                 # Deployment instructions for production hosting
-├── requirements.txt         # Required Python packages list
-├── run.py                   # Main backend starter file
-├── seed.py                  # Script to fill local database with test data
-├── test_api.py              # Automated test cases
-└── update_admin.py          # Quick tool to update admin details
+│   ├── routes/
+│   │   ├── admin.py          # Moderation and user controls
+│   │   ├── auth.py           # Signup, login, profile updates
+│   │   ├── decks.py          # Deck creation, updates, library search
+│   │   ├── notifications.py  # Review reminders and alerts
+│   │   └── study.py          # Card reviews and session tracking
+│   ├── __init__.py           # App factory and config
+│   └── models.py             # Database models
+├── migrations/                # Alembic migration history
+├── API.md                     # Endpoint documentation
+├── config.py                  # Config loader
+├── FLASHLEARN_ERD.png          # Database ER diagram
+├── Procfile                    # Production start command
+├── requirements.txt             # Python dependencies
+├── run.py                      # App entrypoint
+├── seed.py                     # Local dev seed script
+├── test_api.py                  # Test suite
+└── update_admin.py              # Script to update admin users
 ```
 
 ---
 
 ## Getting Started
 
-### Local Setup Steps
+### Local Setup
 
 **1. Clone the repository**
 ```bash
@@ -76,48 +78,47 @@ git clone https://github.com/jareelireri-ops/flashlearn_backend.git
 cd flashlearn_backend
 ```
 
-**2. Create and turn on a virtual environment**
+**2. Create a virtual environment**
 ```bash
 python -m venv venv
-source venv/bin/activate  # Windows users: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 ```
 
-**3. Install the package dependencies**
+**3. Install dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-**4. Set up your environment settings**
+**4. Set up environment variables**
 
-Create your own local configuration file:
 ```bash
 cp .env.example .env
 ```
-Open the new `.env` file and fill in your local keys (`DATABASE_URL`, `SECRET_KEY`, and `JWT_SECRET_KEY`).
+Fill in `DATABASE_URL`, `SECRET_KEY`, and `JWT_SECRET_KEY` in the new `.env` file.
 
-**5. Build your database tables and insert sample data**
+**5. Set up the database**
 ```bash
 flask db upgrade
 python seed.py
 ```
 
-**6. Fire up the local backend server**
+**6. Run the server**
 ```bash
 flask run
 ```
 
 ---
 
-## Environment Variables Configuration
+## Environment Variables
 
-| Variable | What It Does |
+| Variable | Description |
 |---|---|
-| `DATABASE_URL` | The direct connection pathway to your PostgreSQL database |
-| `SECRET_KEY` | Secure security salt for processing requests |
-| `JWT_SECRET_KEY` | The secret validation key for verifying logged-in user tokens |
-| `CORS_ORIGINS` | Tells the backend which frontend website URL is allowed to talk to it |
+| `DATABASE_URL` | Connection string for the PostgreSQL database |
+| `SECRET_KEY` | Flask secret key for session/request security |
+| `JWT_SECRET_KEY` | Secret used to sign and verify JWT tokens |
+| `CORS_ORIGINS` | Allowed frontend origin(s) for CORS |
 
 ---
 
 ## Related Repositories
-* [Frontend Client Repository](https://flashlearn-frontend-ten.vercel.app)
+- [Frontend Client Repository](https://flashlearn-frontend-ten.vercel.app)
