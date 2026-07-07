@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from datetime import datetime, timezone, timedelta
 from app import db
-from app.models import User, Deck, Flashcard, Report
+from app.models import User, Deck, Flashcard, Report, StudySession, ReviewHistory
 
 # Initializing Admin Blueprint
 admin_bp = Blueprint('admin', __name__)
@@ -185,3 +186,40 @@ def admin_delete_content():
         db.session.rollback()
         current_app.logger.error(f"admin_delete_content failed (deck_id={deck_id}, flashcard_id={flashcard_id}): {str(e)}")
         return jsonify({"error": "Failed to remove content", "details": str(e)}), 500
+
+@admin_bp.route('/admin/stats', methods=['GET'])
+@jwt_required()
+def get_platform_stats():
+    """View platform-wide activity stats."""
+    current_user_id = int(get_jwt_identity())
+    if not is_admin(current_user_id):
+        return jsonify({"error": "Admin access required"}), 403
+
+    total_users = User.query.count()
+    total_decks = Deck.query.count()
+    total_flashcards = Flashcard.query.count()
+    total_study_sessions = StudySession.query.count()
+    total_reviews = ReviewHistory.query.count()
+
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+
+    active_users_7d = db.session.query(StudySession.user_id).filter(
+        StudySession.start_time >= seven_days_ago
+    ).distinct().count()
+
+    new_users_7d = User.query.filter(User.created_at >= seven_days_ago).count()
+
+    sessions_7d = StudySession.query.filter(
+        StudySession.start_time >= seven_days_ago
+    ).count()
+
+    return jsonify({
+        "total_users": total_users,
+        "total_decks": total_decks,
+        "total_flashcards": total_flashcards,
+        "total_study_sessions": total_study_sessions,
+        "total_reviews": total_reviews,
+        "active_users_7d": active_users_7d,
+        "new_users_7d": new_users_7d,
+        "sessions_7d": sessions_7d
+    }), 200
