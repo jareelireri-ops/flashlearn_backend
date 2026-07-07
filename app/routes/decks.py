@@ -136,6 +136,7 @@ def get_user_decks():
             "is_public": deck.is_public,
             "is_archived": deck.is_archived,
             "difficulty_level": deck.difficulty_level,
+            "num_flashcards": len(deck.flashcards),
             "created_at": deck.created_at
         } for deck in user_decks],
         # pagination metadata to help the frontend manage large sets of decks and navigate through them efficiently.
