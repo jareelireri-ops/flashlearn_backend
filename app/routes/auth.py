@@ -163,7 +163,8 @@ def login():
             "id": user.id,
             "name": user.name,
             "email": user.email,
-            "role": user.role
+            "role": user.role,
+            "profile_picture_url": user.profile_picture_url
         }
     }), 200
 
