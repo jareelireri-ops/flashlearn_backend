@@ -112,6 +112,6 @@ def create_app(config_class=Config):
     # and it serves as a health check endpoint for the API
     @app.route('/')
     def home():
-        return {"status": "healthy", "message": "FlashLearn API is running successfully"}, 200
+        return {"status": "healthy", "message": "EcoFlip API is running successfully"}, 200
 
     return app

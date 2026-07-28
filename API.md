@@ -1,4 +1,4 @@
-# FlashLearn API Documentation
+# EcoFlip API Documentation
 
 Base URL (local): `http://127.0.0.1:5000/api`
 Base URL (production): `https://flashlearn-backend-ocnv.onrender.com/api`

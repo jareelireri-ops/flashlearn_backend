@@ -1,6 +1,6 @@
-# FlashLearn — Backend
+# EcoFlip — Backend
 
-This is the backend API for FlashLearn. It handles user authentication, tracks study history, calculates spaced repetition schedules, and manages content reports for admins.
+This is the backend API for EcoFlip. It handles user authentication, tracks study history, calculates spaced repetition schedules, and manages content reports for admins.
 
 * **Live API:** https://flashlearn-backend-ocnv.onrender.com
 * **Frontend App:** https://flashlearn-frontend-ten.vercel.app
@@ -57,7 +57,7 @@ flashlearn_backend/
 ├── migrations/                # Alembic migration history
 ├── API.md                     # Endpoint documentation
 ├── config.py                  # Config loader
-├── FLASHLEARN_ERD.png          # Database ER diagram
+├── ECOFLIP_ERD.png          # Database ER diagram
 ├── Procfile                    # Production start command
 ├── requirements.txt             # Python dependencies
 ├── run.py                      # App entrypoint
